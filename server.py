@@ -1,4 +1,5 @@
 from protocol import Protocol
+from communication import recv_message, send_message
 import socket
 import select
 import sys
@@ -12,8 +13,18 @@ MAX_CONNECTIONS = 4
 # Instantiate the protocol class
 p = Protocol()
 
-def server_commands():
-    pass
+def parse_user_messages(sock: socket.socket,
+                        message: bytes,
+                        session_users: dict[str, socket.socket]) -> bytes:
+    """Parse the message header and any commands"""
+    message_str = message.decode().strip()
+
+    # Client uses the !who command
+    if message_str.startswith(p.LIST):
+        all_active_users  = ",".join(user for user in session_users)
+    
+    return (f"{p.LIST_OK} {all_active_users}\n").encode()
+
 
 def remove_user_from_session(sock: socket.socket, 
                              session_users: dict[str, socket.socket], 
@@ -25,8 +36,9 @@ def remove_user_from_session(sock: socket.socket,
     if username:
         session_users.pop(username, None)
 
-def authenticate_user(message: bytes, 
-                      sock: socket.socket, 
+
+def authenticate_user(sock: socket.socket,
+                      message: bytes,  
                       session_users: dict[str, socket.socket], 
                       session_sockets: dict[socket.socket, str]) -> bytes:
     """Retrieves the user's name to login in to the chat server and adds it to the session"""
@@ -34,20 +46,25 @@ def authenticate_user(message: bytes,
     WHITELIST_CHARS = string.ascii_letters + string.digits
 
     message_str = message.decode().strip("")
-    # check if message startswith HELLO-FROM
+    # Check if message startswith HELLO-FROM
     if not message_str.startswith(p.HELLO_FROM):
         return (p.BAD_HEADER + "\n").encode()
     
-    # check if room is full
+    # Check if room is full
     if len(session_users) == MAX_CONNECTIONS:
         return (p.BUSY + "\n").encode()
     
-    username = message_str.split(" ")[-1]
-    # Validate username characters against whitelist
+    # Check if header consists of HELLO-FROM and username
+    message_str_split = message_str.split()
+    if len(message_str_split) != 2:
+        return (p.BAD_HEADER + "\n").encode()
+    
+    # Validate username against whitelist
+    username = message_str_split[-1].lower()
     if any(char not in WHITELIST_CHARS for char in username):
         return (p.BAD_FORMAT + "\n").encode()
-    
-    # check if username is in use
+
+    # Check if username is in use
     if username.lower() in session_users:
         return (p.BAD_DEST_USER + "\n").encode()
     
@@ -103,16 +120,17 @@ def main():
                 # Give the connection a queue for data we want to send
                 message_queues[connection] = queue.Queue()
             else:
-                data = s.recv(1024)
+                data = recv_message(s)
                 if data:
                     # A readable client socket has data
                     print(f"received {data} from {s.getpeername()}")
                     
                     # Check if the user is already authenticated
                     if s not in session_sockets:
-                        print("User not in session")
-                        data = authenticate_user(data, s, session_users, session_sockets)
-                    
+                        data = authenticate_user(s, data, session_users, session_sockets)
+                    else:
+                        data = parse_user_messages(s, data, session_users) 
+            
                     message_queues[s].put(data)
                     # Add a channel for output response
                     if s not in outputs:
