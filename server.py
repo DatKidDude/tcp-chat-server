@@ -4,6 +4,7 @@ import select
 import sys
 import queue
 import typing
+import string
 
 HOST = "127.0.0.1"
 PORT = 6969
@@ -11,25 +12,51 @@ MAX_CONNECTIONS = 4
 # Instantiate the protocol class
 p = Protocol()
 
-def handshake(message: bytes, users):
-    """Retrieves the user's name to login in to the chat server"""
+def server_commands():
+    pass
+
+def remove_user_from_session(sock: socket.socket, 
+                             session_users: dict[str, socket.socket], 
+                             session_sockets: dict[socket.socket, str]):
+    """Removes the user and socket from the session dictionaries"""
+
+    # Retrieve the username
+    username = session_sockets.pop(sock, None)
+    if username:
+        session_users.pop(username, None)
+
+def authenticate_user(message: bytes, 
+                      sock: socket.socket, 
+                      session_users: dict[str, socket.socket], 
+                      session_sockets: dict[socket.socket, str]) -> bytes:
+    """Retrieves the user's name to login in to the chat server and adds it to the session"""
+    # Only allow letter and digit characters (Whitelist approach)
+    WHITELIST_CHARS = string.ascii_letters + string.digits
+
     message_str = message.decode().strip("")
-    # TODO: Add newline after each message
     # check if message startswith HELLO-FROM
     if not message_str.startswith(p.HELLO_FROM):
-        print(message_str)
-        return p.BAD_HEADER.encode()
+        return (p.BAD_HEADER + "\n").encode()
     
     # check if room is full
-    if len(users) == MAX_CONNECTIONS:
-        return p.BUSY.encode()
+    if len(session_users) == MAX_CONNECTIONS:
+        return (p.BUSY + "\n").encode()
+    
+    username = message_str.split(" ")[-1]
+    # Validate username characters against whitelist
+    if any(char not in WHITELIST_CHARS for char in username):
+        return (p.BAD_FORMAT + "\n").encode()
     
     # check if username is in use
-    username = message_str.split(" ")[-1]
-    if username.lower() in users:
-        return p.BAD_DEST_USER.encode()
+    if username.lower() in session_users:
+        return (p.BAD_DEST_USER + "\n").encode()
     
-    return f"{p.HELLO} {username}".encode()
+    # Add users to session
+    session_users.update({username: sock})
+    session_sockets.update({sock: username})
+
+    return f"{p.HELLO} {username}\n".encode()
+
 
 def main():
     # Create a TCP/IP socket
@@ -54,8 +81,9 @@ def main():
     # Outgoing message queues
     message_queues: dict[socket.socket, queue.Queue] = {}
 
-    # logged in users
-    users: dict[str, socket.socket] = {}
+    # logged in session_users (using two mappings)
+    session_users: dict[str, socket.socket] = {}
+    session_sockets: dict[socket.socket, str] = {}
 
     while inputs:
         # Wait for at least one of the sockets to be ready for processing
@@ -79,16 +107,21 @@ def main():
                 if data:
                     # A readable client socket has data
                     print(f"received {data} from {s.getpeername()}")
-                    # TODO: Implement the handshake
-                    response = handshake(data, users)
-
-                    message_queues[s].put(response)
+                    
+                    # Check if the user is already authenticated
+                    if s not in session_sockets:
+                        print("User not in session")
+                        data = authenticate_user(data, s, session_users, session_sockets)
+                    
+                    message_queues[s].put(data)
                     # Add a channel for output response
                     if s not in outputs:
                         outputs.append(s)
                 else:
                     # Interpret empty result as closed connection
                     print(f"closing {client_address} after reading no data", file=sys.stderr)
+                    # Remove the user from the session
+                    remove_user_from_session(s, session_users, session_sockets)
                     # Stop listening for the input on the connection
                     if s in outputs:
                         outputs.remove(s)
@@ -113,6 +146,8 @@ def main():
         # Handle exceptional conditions
         for s in exceptional:
             print(f"handling exceptional conditions for {s.getpeername()}", file=sys.stderr)
+            # Remove the user from the session
+            remove_user_from_session(s, session_users, session_sockets)
             # Stop listening for input on the connection
             inputs.remove(s)
             if s in outputs:
