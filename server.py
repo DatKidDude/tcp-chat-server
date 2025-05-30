@@ -22,8 +22,9 @@ def parse_user_messages(sock: socket.socket,
     # Client uses the !who command
     if message_str.startswith(p.LIST):
         all_active_users  = ",".join(user for user in session_users)
+        return (f"{p.LIST_OK} {all_active_users}\n").encode()
     
-    return (f"{p.LIST_OK} {all_active_users}\n").encode()
+    # SEND [name] [message]
 
 
 def remove_user_from_session(sock: socket.socket, 
@@ -51,28 +52,31 @@ def authenticate_user(sock: socket.socket,
         return (p.BAD_HEADER + "\n").encode()
     
     # Check if room is full
-    if len(session_users) == MAX_CONNECTIONS:
+    if len(session_users) >= MAX_CONNECTIONS:
         return (p.BUSY + "\n").encode()
     
     # Check if header consists of HELLO-FROM and username
-    message_str_split = message_str.split()
-    if len(message_str_split) != 2:
+    parts = message_str.split()
+    if len(parts) != 2:
         return (p.BAD_HEADER + "\n").encode()
     
+    # Get the username and store it in lowercase
+    username = parts[-1]
+    username_lower = username.lower()
+
     # Validate username against whitelist
-    username = message_str_split[-1].lower()
-    if any(char not in WHITELIST_CHARS for char in username):
+    if any(char not in WHITELIST_CHARS for char in username_lower):
         return (p.BAD_FORMAT + "\n").encode()
 
     # Check if username is in use
-    if username.lower() in session_users:
+    if username_lower in session_users:
         return (p.BAD_DEST_USER + "\n").encode()
     
     # Add users to session
-    session_users.update({username: sock})
-    session_sockets.update({sock: username})
+    session_users.update({username_lower: sock})
+    session_sockets.update({sock: username_lower})
 
-    return f"{p.HELLO} {username}\n".encode()
+    return f"{p.HELLO} {username_lower}\n".encode()
 
 
 def main():
