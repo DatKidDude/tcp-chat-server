@@ -1,7 +1,7 @@
 from protocol import Packet
 import socket
 
-p = Packet(header="HELL-FROM", username="bill", message="")
+p = Packet(header="HELLO-FROM", username="b", message="")
 packet = p.to_bytes()
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:

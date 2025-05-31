@@ -48,8 +48,8 @@ def authenticate_user(sock: socket.socket,
     username = recv_packet.username if recv_packet.username else ""
     message = recv_packet.message if recv_packet.message else ""
 
-    # Only allow letter and digit characters (Whitelist approach)
-    WHITELIST_CHARS = string.ascii_letters + string.digits
+    # Disallow characters (blacklist approach)
+    FORBIDDEN_CHARACTERS = {"!", "@", "#", "$", "%", "^", "&", "*"}
    
     # Check if message startswith HELLO-FROM
     if not recv_packet.header.startswith(p.HELLO_FROM):
@@ -59,20 +59,19 @@ def authenticate_user(sock: socket.socket,
     if len(session_users) >= MAX_CONNECTIONS:
         return Packet(header=p.BUSY, username=username, message=message).to_bytes()
 
-    # Validate username length and against whitelist
-    if len(username) >= 3:
-        if any(char not in WHITELIST_CHARS for char in username):
-            return (p.BAD_FORMAT + "\n").encode()
+    # Validate username length and against blacklist characters
+    if len(username) < 3 or any(char in FORBIDDEN_CHARACTERS for char in username):
+        return Packet(header=p.BAD_FORMAT, username=username, message=f"Cannot log in as {username}. That username contains disallowed characters.").to_bytes()
 
-    # # Check if username is in use
-    # if username_lower in session_users:
-    #     return (p.BAD_DEST_USER + "\n").encode()
+    # Check if username is in use
+    if username in session_users:
+        return Packet(header=p.BAD_DEST_USER, username=username, message=f"Cannot log in as {username}. That username is already in use.").to_bytes()
     
-    # # Add users to session
-    # session_users.update({username_lower: sock})
-    # session_sockets.update({sock: username_lower})
+    # Add users to session
+    session_users.update({username: sock})
+    session_sockets.update({sock: username})
 
-    # return f"{p.HELLO} {username_lower}\n".encode()
+    return Packet(header=p.HELLO, username=username, message=f"Successfully logged in as {username}").to_bytes()
 
 
 def main():
@@ -174,6 +173,7 @@ def main():
 
             # Remove message queue
             del message_queues[s]
+
 
 if __name__ == "__main__":
     main()
