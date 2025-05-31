@@ -1,34 +1,16 @@
+from protocol import Packet
 import socket
-import sys
 
-messages = [
-    "This is the message",
-    "It will be sent",
-    "in parts.",
-]
+p = Packet(header="HELL-FROM", username="bill", message="")
+packet = p.to_bytes()
 
-server_address = ("localhost", 6969)
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+    client.connect(("127.0.0.1", 6969))
 
-socks = [
-    socket.socket(socket.AF_INET, socket.SOCK_STREAM),
-    socket.socket(socket.AF_INET, socket.SOCK_STREAM),
-]
+    client.sendall(packet)
+    data = client.recv(4096)
+    print(data.decode())
+    client.close()
 
-print(f"connecting to {server_address[0]}:{server_address[1]}")
-for s in socks:
-    s.connect(server_address)
 
-for message in messages:
 
-    # Send messages on both sockets
-    for s in socks:
-        print(f"{s.getsockname()}: sending {message}")
-        s.send(message.encode())
-    
-    # Read responses on both sockets
-    for s in socks:
-        data = s.recv(1024)
-        print(f"{s.getsockname()}: receive {data}")
-        if not data:
-            print(f"closing socket {s.getsockname()}")
-            s.close()

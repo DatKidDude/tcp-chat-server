@@ -1,4 +1,4 @@
-from protocol import Protocol
+from protocol import Protocol, Packet
 from communication import recv_message, send_message
 import socket
 import select
@@ -11,7 +11,8 @@ HOST = "127.0.0.1"
 PORT = 6969
 MAX_CONNECTIONS = 4
 # Instantiate the protocol class
-p = Protocol()
+p: Protocol = Protocol()
+
 
 def parse_user_messages(sock: socket.socket,
                         message: bytes,
@@ -39,44 +40,39 @@ def remove_user_from_session(sock: socket.socket,
 
 
 def authenticate_user(sock: socket.socket,
-                      message: bytes,  
+                      packet: bytes,  
                       session_users: dict[str, socket.socket], 
                       session_sockets: dict[socket.socket, str]) -> bytes:
     """Retrieves the user's name to login in to the chat server and adds it to the session"""
+    recv_packet = Packet.from_bytes(packet)
+    username = recv_packet.username if recv_packet.username else ""
+    message = recv_packet.message if recv_packet.message else ""
+
     # Only allow letter and digit characters (Whitelist approach)
     WHITELIST_CHARS = string.ascii_letters + string.digits
-
-    message_str = message.decode().strip("")
+   
     # Check if message startswith HELLO-FROM
-    if not message_str.startswith(p.HELLO_FROM):
-        return (p.BAD_HEADER + "\n").encode()
-    
+    if not recv_packet.header.startswith(p.HELLO_FROM):
+        return Packet(header=p.BAD_HEADER, username="", message="Error: Unknown issue in previous message header.").to_bytes()          
+       
     # Check if room is full
     if len(session_users) >= MAX_CONNECTIONS:
-        return (p.BUSY + "\n").encode()
-    
-    # Check if header consists of HELLO-FROM and username
-    parts = message_str.split()
-    if len(parts) != 2:
-        return (p.BAD_HEADER + "\n").encode()
-    
-    # Get the username and store it in lowercase
-    username = parts[-1]
-    username_lower = username.lower()
+        return Packet(header=p.BUSY, username=username, message=message).to_bytes()
 
-    # Validate username against whitelist
-    if any(char not in WHITELIST_CHARS for char in username_lower):
-        return (p.BAD_FORMAT + "\n").encode()
+    # Validate username length and against whitelist
+    if len(username) >= 3:
+        if any(char not in WHITELIST_CHARS for char in username):
+            return (p.BAD_FORMAT + "\n").encode()
 
-    # Check if username is in use
-    if username_lower in session_users:
-        return (p.BAD_DEST_USER + "\n").encode()
+    # # Check if username is in use
+    # if username_lower in session_users:
+    #     return (p.BAD_DEST_USER + "\n").encode()
     
-    # Add users to session
-    session_users.update({username_lower: sock})
-    session_sockets.update({sock: username_lower})
+    # # Add users to session
+    # session_users.update({username_lower: sock})
+    # session_sockets.update({sock: username_lower})
 
-    return f"{p.HELLO} {username_lower}\n".encode()
+    # return f"{p.HELLO} {username_lower}\n".encode()
 
 
 def main():
