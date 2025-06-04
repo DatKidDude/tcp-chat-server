@@ -1,6 +1,6 @@
 import select 
 import socket
-from queue import Queue
+import queue
 from protocol import MessageHeaders
 
 HOST = "localhost"
@@ -81,7 +81,7 @@ def start_server():
                 inputs.append(connection)
 
                 # Give the connection a queue for data we want to send
-                message_queues[connection] = Queue()
+                message_queues[connection] = queue.Queue()
             else:
                 data = s.recv(4096)
                 if data:
@@ -106,7 +106,7 @@ def start_server():
         for s in writeable:
             try:
                 next_msg = message_queues[s].get_nowait()
-            except Queue.empty:
+            except queue.Empty:
                 # No messages waiting so stop checking
                 outputs.remove(s)
             else:
