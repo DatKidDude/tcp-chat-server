@@ -1,16 +1,53 @@
 import select 
 import socket
 from queue import Queue
+from protocol import MessageHeaders
 
 HOST = "localhost"
 PORT = 6969
+MAX_USERS = 4
 
 users_and_sockets = {}
 sockets_and_users = {}
 
+headers = MessageHeaders()
+
+def authenticate_user(message: bytes, client_sock: socket.socket) -> bytes:
+    """Authenticates the user on login"""
+
+    FORBIDDEN_CHARS = {"!", "@", "#", "$", "%", "^", "&", "*"}
+
+    split_message = message.decode().strip().split()
+
+    # Message must contain the header and username only
+    if len(split_message) > 2:
+        return (headers.BAD_RQST_BODY + "\n").encode()
+    else:
+        header, username = split_message
+
+    # Validate initial handshake header
+    if not header.startswith(headers.HELLO_FROM):
+        return (headers.BAD_RQST_HDR + "\n").encode()
+    
+    # Check if the server is full
+    if len(users_and_sockets) >= MAX_USERS:
+        return (headers.BUSY + "\n").encode()
+    
+    # Check the length of the username and if it contains banned characters
+    if len(username) < 3 or any(char in FORBIDDEN_CHARS for char in username):
+        return (headers.BAD_DEST_USR + "\n").encode()
+    
+    # Check if the username is already taken
+    if username in users_and_sockets:
+        return (headers.IN_USE + "\n").encode()
+
+    return (headers.HELLO + "\n").encode()
+    
+
 def start_server():
     # Create a TCP/IP socket
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.setblocking(False)
 
     # Bind the socke to the port
@@ -48,6 +85,8 @@ def start_server():
             else:
                 data = s.recv(4096)
                 if data:
+                    # if s not in sockets_and_users:
+                    #     data = authenticate_user(data, s)
                     # A readable client socket has data
                     message_queues[s].put(data)
                     # Add output channel for response
@@ -63,26 +102,26 @@ def start_server():
                     # Remove message queue
                     del message_queues[s]
 
-    # Handle outputs
-    for s in writeable:
-        try:
-            next_msg = message_queues[s].get_nowait()
-        except Queue.empty:
-            # No messages waiting so stop checking
-            outputs.remove(s)
-        else:
-            s.send(next_msg)
-        
-    # Handle "exceptional conditions"
-    for s in exceptional:
-        # Stop listening for input on the connection
-        inputs.remove(s)
-        if s in outputs:
-            outputs.remove(s)
-        s.close()
+        # Handle outputs
+        for s in writeable:
+            try:
+                next_msg = message_queues[s].get_nowait()
+            except Queue.empty:
+                # No messages waiting so stop checking
+                outputs.remove(s)
+            else:
+                s.send(next_msg)
+            
+        # Handle "exceptional conditions"
+        for s in exceptional:
+            # Stop listening for input on the connection
+            inputs.remove(s)
+            if s in outputs:
+                outputs.remove(s)
+            s.close()
 
-        # Remove message queue
-        del message_queues[s]
+            # Remove message queue
+            del message_queues[s]
 
 
 if __name__ == "__main__":
