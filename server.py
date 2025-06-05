@@ -7,10 +7,18 @@ HOST = "localhost"
 PORT = 6969
 MAX_USERS = 4
 
+# Keeps track of currently active users
 users_and_sockets = {}
 sockets_and_users = {}
 
 headers = MessageHeaders()
+
+def remove_user(client_sock: socket.socket) -> None:
+    """Remove the user from the two dictionaries"""
+    if client_sock in sockets_and_users:
+        username = sockets_and_users.pop(client_sock)
+        del users_and_sockets[username]
+
 
 def authenticate_user(message: bytes, client_sock: socket.socket) -> bytes:
     """Authenticates the user on login"""
@@ -40,6 +48,9 @@ def authenticate_user(message: bytes, client_sock: socket.socket) -> bytes:
     # Check if the username is already taken
     if username in users_and_sockets:
         return (headers.IN_USE + "\n").encode()
+
+    users_and_sockets.update({username: client_sock})
+    sockets_and_users.update({client_sock: username})
 
     return (headers.HELLO + "\n").encode()
     
@@ -98,6 +109,7 @@ def start_server():
                 else:
                     # Interpret empty results as a closed connection
                     print(f"closing {client_address} after reading no data")
+                    remove_user(s)
                     # Stop listening for input on the connection
                     inputs.remove(s)
                     s.close()
@@ -119,6 +131,7 @@ def start_server():
         # Handle "exceptional conditions"
         for s in exceptional:
             print(f"handling exceptional condition for {s.getpeername()}")
+            remove_user(s)
             # Stop listening for input on the connection
             inputs.remove(s)
             if s in outputs:
