@@ -11,7 +11,12 @@ MAX_USERS = 4
 users_and_sockets = {}
 sockets_and_users = {}
 
-headers = MessageHeaders()
+mh = MessageHeaders()
+
+def handle_messages(message: bytes, client_sock: socket.socket) -> bytes:
+    """Parse the user's incoming messages"""
+    header, msg = message.decode().strip().split()
+    pass
 
 def remove_user(client_sock: socket.socket) -> None:
     """Remove the user from the two dictionaries"""
@@ -29,30 +34,30 @@ def authenticate_user(message: bytes, client_sock: socket.socket) -> bytes:
 
     # Message must contain the header and username only
     if len(split_message) > 2:
-        return (headers.BAD_RQST_BODY + "\n").encode()
+        return (mh.BAD_RQST_BODY + "\n").encode()
     else:
         header, username = split_message
 
     # Validate initial handshake header
-    if not header.startswith(headers.HELLO_FROM):
-        return (headers.BAD_RQST_HDR + "\n").encode()
+    if not header.startswith(mh.HELLO_FROM):
+        return (mh.BAD_RQST_HDR + "\n").encode()
     
     # Check if the server is full
     if len(users_and_sockets) >= MAX_USERS:
-        return (headers.BUSY + "\n").encode()
+        return (mh.BUSY + "\n").encode()
     
     # Check the length of the username and if it contains banned characters
     if len(username) < 3 or any(char in FORBIDDEN_CHARS for char in username):
-        return (headers.BAD_DEST_USR + "\n").encode()
+        return (mh.BAD_DEST_USR + "\n").encode()
     
     # Check if the username is already taken
     if username in users_and_sockets:
-        return (headers.IN_USE + "\n").encode()
+        return (mh.IN_USE + "\n").encode()
 
     users_and_sockets.update({username: client_sock})
     sockets_and_users.update({client_sock: username})
 
-    return (headers.HELLO + "\n").encode()
+    return (mh.HELLO + "\n").encode()
     
 
 def start_server():
@@ -101,6 +106,8 @@ def start_server():
                     print(f"received {data} from {s.getpeername()}")
                     if s not in sockets_and_users:
                         data = authenticate_user(data, s)
+                    else:
+                        data = handle_messages(data, s)
                     # A readable client socket has data
                     message_queues[s].put(data)
                     # Add output channel for response
