@@ -69,6 +69,7 @@ def start_server():
     while inputs:
 
         # Wait for at least one of the sockets to become ready for processing (Select will block with no timeout set)
+        print(f"\nwaiting for the next event")
         readable, writeable, exceptional = select.select(inputs, outputs, inputs)
 
         # Handle inputs
@@ -77,6 +78,7 @@ def start_server():
             if s is server:
                 # A "readable server socket is ready to accept a connection"
                 connection, client_address = server.accept()
+                print(f"new connection from {client_address}")
                 connection.setblocking(False)
                 inputs.append(connection)
 
@@ -85,8 +87,9 @@ def start_server():
             else:
                 data = s.recv(4096)
                 if data:
-                    # if s not in sockets_and_users:
-                    #     data = authenticate_user(data, s)
+                    print(f"received {data} from {s.getpeername()}")
+                    if s not in sockets_and_users:
+                        data = authenticate_user(data, s)
                     # A readable client socket has data
                     message_queues[s].put(data)
                     # Add output channel for response
@@ -108,12 +111,14 @@ def start_server():
                 next_msg = message_queues[s].get_nowait()
             except queue.Empty:
                 # No messages waiting so stop checking
+                print(f"output queue for {s.getpeername()} is empty")
                 outputs.remove(s)
             else:
                 s.send(next_msg)
             
         # Handle "exceptional conditions"
         for s in exceptional:
+            print(f"handling exceptional condition for {s.getpeername()}")
             # Stop listening for input on the connection
             inputs.remove(s)
             if s in outputs:

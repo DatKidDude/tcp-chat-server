@@ -4,7 +4,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True) 
 class MessageHeaders:
     HELLO: str = "HELLO"
-    HELLO_FROM: str = "HELLO_FROM"
+    HELLO_FROM: str = "HELLO-FROM"
     IN_USE: str = "IN-USE"
     BUSY: str = "BUSY"
     LIST_OK: str = "LIST-OK"
