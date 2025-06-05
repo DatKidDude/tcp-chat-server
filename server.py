@@ -52,6 +52,17 @@ def handle_messages(message: bytes,
             # User doesn't exist
             return (mh.BAD_DEST_USR + "\n").encode()
 
+    # Broadcast message to all users 
+    if header.startswith(mh.BROADCAST):
+        broadcast_message = " ".join(msg)
+        sender_name = sockets_and_users[client_sock]
+        for user in users_and_sockets:
+            receiver_name = users_and_sockets[user]
+            outputs.append(receiver_name)
+            packet = f"{mh.BROADCAST_DELIVERY} {sender_name} {broadcast_message}\n".encode()
+            message_queues[receiver_name].put(packet)
+            return (mh.BROADCAST_OK + "\n").encode()
+
     return (mh.BAD_RQST_BODY + "\n").encode()
 
 
@@ -84,6 +95,7 @@ def authenticate_user(message: bytes, client_sock: socket.socket) -> bytes:
         return (mh.BUSY + "\n").encode()
     
     # Check the length of the username and if it contains banned characters
+    # TODO: Need to separate these according to specification
     if len(username) < 3 or any(char in FORBIDDEN_CHARS for char in username):
         return (mh.BAD_DEST_USR + "\n").encode()
     
