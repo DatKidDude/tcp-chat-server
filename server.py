@@ -1,6 +1,7 @@
 import select 
 import socket
 import queue
+import json
 from protocol import MessageHeaders
 
 HOST = "localhost"
@@ -13,10 +14,46 @@ sockets_and_users = {}
 
 mh = MessageHeaders()
 
-def handle_messages(message: bytes, client_sock: socket.socket) -> bytes:
+def handle_messages(message: bytes, 
+                    client_sock: socket.socket, 
+                    message_queues: dict[str, queue.Queue], 
+                    outputs: list
+                    ) -> bytes:
     """Parse the user's incoming messages"""
-    header, msg = message.decode().strip().split()
-    pass
+    header, *msg = message.decode().strip().split()
+    
+    # Return a list of users in the chatroom
+    if header.startswith(mh.LIST):
+        active_users = [user for user in users_and_sockets]
+        return f"{mh.LIST_OK} {json.dumps(active_users)}\n".encode()
+
+    # Sends direct messages to user
+    if header.startswith(mh.SEND):
+        username, *private_message = msg
+        if username in users_and_sockets:
+            private_message = " ".join(private_message)
+            # Person sending the message
+            sender_name = sockets_and_users[client_sock] 
+
+            # Person receiving the message
+            receiver_name = users_and_sockets[username]
+
+            # Add receiver to outputs list
+            outputs.append(receiver_name)
+
+            packet = f"{mh.DELIVERY} {sender_name} {private_message}\n".encode()
+
+            # Add the message to the receiver's queue 
+            message_queues[receiver_name].put(packet)
+
+            # Send an ok status message back to the user
+            return f"{mh.SEND_OK}\n".encode()
+        else:
+            # User doesn't exist
+            return (mh.BAD_DEST_USR + "\n").encode()
+
+    return (mh.BAD_RQST_BODY + "\n").encode()
+
 
 def remove_user(client_sock: socket.socket) -> None:
     """Remove the user from the two dictionaries"""
@@ -57,7 +94,7 @@ def authenticate_user(message: bytes, client_sock: socket.socket) -> bytes:
     users_and_sockets.update({username: client_sock})
     sockets_and_users.update({client_sock: username})
 
-    return (mh.HELLO + "\n").encode()
+    return f"{mh.HELLO} {username}\n".encode()
     
 
 def start_server():
@@ -107,7 +144,7 @@ def start_server():
                     if s not in sockets_and_users:
                         data = authenticate_user(data, s)
                     else:
-                        data = handle_messages(data, s)
+                        data = handle_messages(data, s, message_queues, outputs)
                     # A readable client socket has data
                     message_queues[s].put(data)
                     # Add output channel for response
