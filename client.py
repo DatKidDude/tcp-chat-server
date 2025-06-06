@@ -8,7 +8,7 @@ PORT = 6969
 
 mh = MessageHeaders()
 
-def handle_message(packet: list, has_username: bool):
+def handle_login(packet: list, has_username: bool, username: str):
     """Handles parsing incoming messages from the server"""
     # Checks if the user has successfully logged into the server
     if not has_username:
@@ -17,13 +17,13 @@ def handle_message(packet: list, has_username: bool):
         elif packet[0] == mh.BAD_RQST_BODY:
             print("Error: Unknown issue in previous message body.")
         elif packet[0] == mh.IN_USE:
-            print(f"Cannot login as <username>. That username is already in use.")
+            print(f"Cannot login as {username}. That username is already in use.")
         elif packet[0] == mh.BUSY:
             print("Cannot log in. The server is full!")
         elif packet[0] == mh.BAD_DEST_USR:
-            print(f"Cannot log in as <username>. That username contains disallowed characters.")
+            print(f"Cannot log in as {username}. That username contains disallowed characters.")
         else: 
-            print(f"Successfully logged in as <username>")
+            print(f"Successfully logged in as {username}")
             has_username = True
 
 
@@ -52,8 +52,10 @@ def start_client():
                 data = client.recv(4096)
                 if data:
                     packet = data.decode().split()
-                    handle_message(packet, has_username)
-                    print(packet)
+                    if not has_username:
+                        handle_login(packet, has_username, username)
+                    else:
+                        print(packet)
                 else:
                     inputs.remove(client)
                     client.close()
