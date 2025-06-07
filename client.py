@@ -1,6 +1,7 @@
 import select 
 import socket
 import sys
+import json
 from protocol import MessageHeaders
 
 HOST = "localhost"
@@ -8,23 +9,70 @@ PORT = 6969
 
 mh = MessageHeaders()
 
-def handle_login(packet: list, has_username: bool, username: str):
+def handle_client_input(packet: str):
+    """Parses the client messages before sending them to the server"""
+    client_message = packet.strip().split()
+
+    # Parses the client commands (!who, !quit)
+    # TODO: Add the !quit command
+    if client_message[0].startswith("!"):
+        command = client_message[0]
+        if command == "!who":
+            return f"{mh.LIST} {command}\n".encode()
+        else:
+            print("Command does not exist")
+            return None
+    
+    if client_message[0].startswith("@"):
+        username, *msg = client_message
+        return f"{mh.SEND} {username} {" ".join(msg)}\n".encode()
+
+
+def handle_server_response(packet: str):
+    """Parses the server response headers"""
+
+    header, *msg = packet.split()
+
+    if header.startswith(mh.LIST_OK):
+        # Turn the users list back into a list object
+        users = json.loads(packet.split(" ", 1)[1])
+        print(f"There are {len(users)} online users:")
+        for user in users:
+            print(user)
+        return
+    
+    if header.startswith(mh.SEND_OK):
+        print("The message was sent successfully")
+        return 
+    
+    if header.startswith(mh.DELIVERY):
+        header, username, *msg = packet.split()
+        print(f"From {username}: {" ".join(msg)}")
+        return
+
+
+def handle_login(packet: str, has_username: bool, username: str) -> bool:
     """Handles parsing incoming messages from the server"""
+
+    split_packet = packet.split()
+
     # Checks if the user has successfully logged into the server
     if not has_username:
-        if packet[0] == mh.BAD_RQST_HDR:
+        if split_packet[0] == mh.BAD_RQST_HDR:
             print("Error: Unknown issue in previous message header")
-        elif packet[0] == mh.BAD_RQST_BODY:
+        elif split_packet[0] == mh.BAD_RQST_BODY:
             print("Error: Unknown issue in previous message body.")
-        elif packet[0] == mh.IN_USE:
+        elif split_packet[0] == mh.IN_USE:
             print(f"Cannot login as {username}. That username is already in use.")
-        elif packet[0] == mh.BUSY:
+        elif split_packet[0] == mh.BUSY:
             print("Cannot log in. The server is full!")
-        elif packet[0] == mh.BAD_DEST_USR:
+        elif split_packet[0] == mh.BAD_DEST_USR:
             print(f"Cannot log in as {username}. That username contains disallowed characters.")
         else: 
             print(f"Successfully logged in as {username}")
             has_username = True
+
+    return has_username
 
 
 def start_client():
@@ -51,11 +99,11 @@ def start_client():
             if s is client:
                 data = client.recv(4096)
                 if data:
-                    packet = data.decode().split()
+                    packet = data.decode()
                     if not has_username:
-                        handle_login(packet, has_username, username)
+                        has_username = handle_login(packet, has_username, username)
                     else:
-                        print(packet)
+                        handle_server_response(packet)
                 else:
                     inputs.remove(client)
                     client.close()
@@ -67,8 +115,11 @@ def start_client():
                     packet = f"{mh.HELLO_FROM} {username}\n".encode()
                     client.sendall(packet)
                 else:
-                    client.sendall(msg.encode())
-
+                    packet = handle_client_input(msg)
+                    if packet:
+                        client.sendall(packet)
+                    else:
+                        pass
 
 if __name__ == "__main__":
     start_client()

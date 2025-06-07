@@ -30,6 +30,9 @@ def handle_messages(message: bytes,
     # Sends direct messages to user
     if header.startswith(mh.SEND):
         username, *private_message = msg
+        # Remove the @ symbol from the username
+        if "@" in username:
+            username = username[1:]
         if username in users_and_sockets:
             private_message = " ".join(private_message)
             # Person sending the message
