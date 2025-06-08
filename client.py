@@ -2,6 +2,7 @@ import select
 import socket
 import sys
 import json
+import queue
 from protocol import MessageHeaders
 
 HOST = "localhost"
@@ -27,6 +28,9 @@ def handle_client_input(packet: str):
         username, *msg = client_message
         return f"{mh.SEND} {username} {" ".join(msg)}\n".encode()
 
+    if client_message:
+        return f"{mh.BROADCAST} {" ".join(client_message)}\n".encode()
+
 
 def handle_server_response(packet: str):
     """Parses the server response headers"""
@@ -49,6 +53,16 @@ def handle_server_response(packet: str):
         header, username, *msg = packet.split()
         print(f"From {username}: {" ".join(msg)}")
         return
+    
+    if header.startswith(mh.BROADCAST_OK):
+        print("Message sent")
+        return
+    elif header.startswith(mh.BROADCAST_DELIVERY):
+        header, username, *msg = packet.split()
+        print(f"{username}: {" ".join(msg)}")
+        return
+    else:
+        print("Error: Something went wrong")
 
 
 def handle_login(packet: str, has_username: bool, username: str) -> bool:
@@ -69,7 +83,7 @@ def handle_login(packet: str, has_username: bool, username: str) -> bool:
         elif split_packet[0] == mh.BAD_DEST_USR:
             print(f"Cannot log in as {username}. That username contains disallowed characters.")
         else: 
-            print(f"Successfully logged in as {username}")
+            print(f"Successfully logged in as {username}\n")
             has_username = True
 
     return has_username
@@ -86,6 +100,10 @@ def start_client():
 
     # Socket from which we expect to write
     outputs = []
+
+    # Outgoing message queues
+    message_queues = {}
+    message_queues[client] = queue.Queue()
 
     # Flag for whether the client is logged into the server
     has_username = False
@@ -120,6 +138,10 @@ def start_client():
                         client.sendall(packet)
                     else:
                         pass
+        
+        # for s in writeable:
+        #     try:
+        #         next_msg = message_queues[s].get_nowait()
 
 if __name__ == "__main__":
     start_client()

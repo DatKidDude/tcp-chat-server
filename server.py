@@ -21,6 +21,7 @@ def handle_messages(message: bytes,
                     ) -> bytes:
     """Parse the user's incoming messages"""
     header, *msg = message.decode().strip().split()
+    print(users_and_sockets)
     
     # Return a list of users in the chatroom
     if header.startswith(mh.LIST):
@@ -60,11 +61,14 @@ def handle_messages(message: bytes,
         broadcast_message = " ".join(msg)
         sender_name = sockets_and_users[client_sock]
         for user in users_and_sockets:
+            # Don't broadcast message to the person who sent it
+            if user == sender_name: 
+                continue
             receiver_name = users_and_sockets[user]
             outputs.append(receiver_name)
             packet = f"{mh.BROADCAST_DELIVERY} {sender_name} {broadcast_message}\n".encode()
             message_queues[receiver_name].put(packet)
-            return (mh.BROADCAST_OK + "\n").encode()
+        return (mh.BROADCAST_OK + "\n").encode()
 
     return (mh.BAD_RQST_BODY + "\n").encode()
 
