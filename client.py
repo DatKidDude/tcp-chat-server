@@ -131,17 +131,37 @@ def start_client():
                 if not has_username:
                     username = msg.split()[0]
                     packet = f"{mh.HELLO_FROM} {username}\n".encode()
-                    client.sendall(packet)
+                    message_queues[client].put(packet)
+                    if client not in outputs:
+                        outputs.append(client)
                 else:
                     packet = handle_client_input(msg)
                     if packet:
-                        client.sendall(packet)
+                        message_queues[client].put(packet)
+                        if client not in outputs:
+                            outputs.append(client)
                     else:
                         pass
         
-        # for s in writeable:
-        #     try:
-        #         next_msg = message_queues[s].get_nowait()
+        for s in writeable:
+            try:
+                next_msg = message_queues[s].get_nowait()
+            except queue.Empty:
+                # No messages waiting so stop checking
+                outputs.remove(s)
+            else:
+                s.sendall(next_msg)
+
+        for s in exceptional:
+            print(f"handling exceptional condition for {s.getpeername()}")
+            # Stop listening for input on the connection
+            inputs.remove(s)
+            if s in outputs:
+                outputs.remove(s)
+            s.close()
+
+            # Remove message queue
+            del message_queues[s]
 
 if __name__ == "__main__":
     start_client()
