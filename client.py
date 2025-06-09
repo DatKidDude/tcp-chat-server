@@ -10,7 +10,7 @@ PORT = 6969
 
 mh = MessageHeaders()
 
-def handle_client_input(packet: str):
+def handle_client_input(packet: str) -> bytes:
     """Parses the client messages before sending them to the server"""
     client_message = packet.strip().split()
 
@@ -22,7 +22,7 @@ def handle_client_input(packet: str):
             return f"{mh.LIST} {command}\n".encode()
         else:
             print("Command does not exist")
-            return None
+            return b""
     
     if client_message[0].startswith("@"):
         username, *msg = client_message
@@ -89,6 +89,25 @@ def handle_login(packet: str, has_username: bool, username: str) -> bool:
     return has_username
 
 
+def handle_stdin_input(msg: str, has_username: bool) -> bytes:
+    """Parses the clients input"""
+    
+    msg = msg.strip()
+    if not msg:
+        print("Cannot send an empty message")
+        return b""
+    
+    if not has_username:
+        # Strip the rest of the text after the whitespace
+        # Username should only be one word
+        username = msg.split()[0]
+        return f"{mh.HELLO_FROM} {username}\n".encode()
+    
+    packet = handle_client_input(msg)
+    
+    return packet or b""
+    
+
 def start_client():
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.setblocking(False)
@@ -118,30 +137,21 @@ def start_client():
                 data = client.recv(4096)
                 if data:
                     packet = data.decode()
-                    if not has_username:
-                        has_username = handle_login(packet, has_username, username)
-                    else:
-                        handle_server_response(packet)
+                    response = handle_server_response(packet, has_username)
+                    print(response)
                 else:
                     inputs.remove(client)
                     client.close()
                     exit()
             else:
                 msg = sys.stdin.readline().strip()
-                if not has_username:
-                    username = msg.split()[0]
-                    packet = f"{mh.HELLO_FROM} {username}\n".encode()
-                    message_queues[client].put(packet)
-                    if client not in outputs:
-                        outputs.append(client)
-                else:
-                    packet = handle_client_input(msg)
-                    if packet:
-                        message_queues[client].put(packet)
-                        if client not in outputs:
-                            outputs.append(client)
-                    else:
-                        pass
+                packet = handle_stdin_input(msg, has_username)
+                # If there's no data returned 
+                if not packet:
+                    continue
+                message_queues[client].put(packet)
+                if client not in outputs:
+                    outputs.append(client)
         
         for s in writeable:
             try:
