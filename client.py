@@ -65,26 +65,30 @@ def handle_server_response(packet: str):
         print("Error: Something went wrong")
 
 
-def handle_login(packet: str, has_username: bool, username: str) -> bool:
+def handle_login(packet: str, has_username: bool, last_sent_packet: bytes) -> bool:
     """Handles parsing incoming messages from the server"""
+
+    # Extract the username from the last sent packet so that we 
+    # can display it back to the user
+    last_sent_packet_str = last_sent_packet.decode()
+    username = last_sent_packet_str.split()[-1]
 
     split_packet = packet.split()
 
     # Checks if the user has successfully logged into the server
-    if not has_username:
-        if split_packet[0] == mh.BAD_RQST_HDR:
-            print("Error: Unknown issue in previous message header")
-        elif split_packet[0] == mh.BAD_RQST_BODY:
-            print("Error: Unknown issue in previous message body.")
-        elif split_packet[0] == mh.IN_USE:
-            print(f"Cannot login as {username}. That username is already in use.")
-        elif split_packet[0] == mh.BUSY:
-            print("Cannot log in. The server is full!")
-        elif split_packet[0] == mh.BAD_DEST_USR:
-            print(f"Cannot log in as {username}. That username contains disallowed characters.")
-        else: 
-            print(f"Successfully logged in as {username}\n")
-            has_username = True
+    if split_packet[0].startswith(mh.BAD_RQST_HDR):
+        print("Error: Unknown issue in previous message header")
+    elif split_packet[0].startswith(mh.BAD_RQST_BODY):
+        print("Error: Unknown issue in previous message body.")
+    elif split_packet[0].startswith(mh.IN_USE):
+        print(f"Cannot login as {username}. That username is already in use.")
+    elif split_packet[0].startswith(mh.BUSY):
+        print("Cannot log in. The server is full!")
+    elif split_packet[0].startswith(mh.BAD_DEST_USR):
+        print(f"Cannot log in as {username}. That username contains disallowed characters.")
+    else: 
+        print(f"Successfully logged in as {username}\n")
+        has_username = True
 
     return has_username
 
@@ -126,7 +130,7 @@ def start_client():
 
     # Flag for whether the client is logged into the server
     has_username = False
-
+    
     print("Welcome to Chat Client. Enter your login: ")
     while client:
 
@@ -136,20 +140,24 @@ def start_client():
             if s is client:
                 data = client.recv(4096)
                 if data:
-                    packet = data.decode()
-                    response = handle_server_response(packet, has_username)
-                    print(response)
+                    recv_packet = data.decode()
+                    if not has_username:
+                        has_username = handle_login(recv_packet, has_username, send_packet)
+                    else:
+                        # handle_server_response()
+                        pass
+                    # print(response)
                 else:
                     inputs.remove(client)
                     client.close()
                     exit()
             else:
                 msg = sys.stdin.readline().strip()
-                packet = handle_stdin_input(msg, has_username)
-                # If there's no data returned 
-                if not packet:
+                send_packet = handle_stdin_input(msg, has_username)
+                # If there's no message was returned (e.g. empty input or validation failure)
+                if not send_packet:
                     continue
-                message_queues[client].put(packet)
+                message_queues[client].put(send_packet)
                 if client not in outputs:
                     outputs.append(client)
         
