@@ -69,7 +69,7 @@ def handle_login(packet: str, has_username: bool, last_sent_packet: bytes) -> bo
     """Handles parsing incoming messages from the server"""
 
     # Extract the username from the last sent packet so that we 
-    # can display it back to the user
+    # can display it back to the user 
     last_sent_packet_str = last_sent_packet.decode()
     username = last_sent_packet_str.split()[-1]
 
@@ -134,7 +134,7 @@ def start_client():
     print("Welcome to Chat Client. Enter your login: ")
     while client:
 
-        readable, writeable, exceptional = select.select(inputs, outputs, inputs, 0.1)
+        readable, writeable, exceptional = select.select(inputs, outputs, inputs)
 
         for s in readable:
             if s is client:
