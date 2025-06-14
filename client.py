@@ -3,7 +3,7 @@ import socket
 import sys
 import json
 import queue
-from protocol import MessageHeaders
+from protocol import MessageHeaders, recv_data, send_data
 
 HOST = "localhost"
 PORT = 6969
@@ -20,6 +20,9 @@ def handle_client_input(packet: str) -> bytes:
         command = client_message[0]
         if command == "!who":
             return f"{mh.LIST} {command}\n".encode()
+        elif command == "!quit": # gracefully shutdown the program
+            print("Shutting down...")
+            sys.exit(0)
         else:
             print("Command does not exist")
             return b""
@@ -138,15 +141,13 @@ def start_client():
 
         for s in readable:
             if s is client:
-                data = client.recv(4096)
+                data = recv_data(client)
                 if data:
                     recv_packet = data.decode()
                     if not has_username:
                         has_username = handle_login(recv_packet, has_username, send_packet)
                     else:
-                        # handle_server_response()
-                        pass
-                    # print(response)
+                        handle_server_response(recv_packet)
                 else:
                     inputs.remove(client)
                     client.close()
@@ -168,7 +169,7 @@ def start_client():
                 # No messages waiting so stop checking
                 outputs.remove(s)
             else:
-                s.sendall(next_msg)
+                send_data(s, next_msg)
 
         for s in exceptional:
             print(f"handling exceptional condition for {s.getpeername()}")
